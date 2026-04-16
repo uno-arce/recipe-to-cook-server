@@ -1,9 +1,21 @@
 import express from 'express';
 import Recipe from '../models/Recipe.js';
 import { generateRecipe } from '../services/pollinationsService.js';
-import { generateRecipeImages } from '../services/cloudflareService.js';
 
 const router = express.Router();
+
+function buildImagePrompts(recipe) {
+  const { title, description, instructions } = recipe;
+
+  const heroPrompt = `${title}, ${description} in a dark stoneware bowl, dramatic kitchen lighting, professional food photography, 8k resolution, restaurant quality presentation`;
+
+  const stepPrompts = instructions.map((inst) => {
+    const material = Math.random() > 0.5 ? 'heavy cast iron pan' : 'stainless steel pan';
+    return `Close-up of ${inst.title.toLowerCase()}: ${inst.text.slice(0, 80)} in a ${material}, warm kitchen lighting, steam rising, atmospheric cooking shot, macro lens`;
+  });
+
+  return [heroPrompt, ...stepPrompts];
+}
 
 router.post('/', async (req, res) => {
   try {
@@ -24,12 +36,7 @@ router.post('/', async (req, res) => {
     const title = recipeData.title || 'Untitled Recipe';
     const description = recipeData.description || '';
 
-    const imagePrompts = [
-      `Professional food photography of ${title}, ${description}, warm lighting, appetizing presentation`,
-      ...instructions.map((inst, idx) => 
-        `Cooking step ${idx + 1}: ${inst.text}, professional kitchen photography`
-      )
-    ];
+    const imagePrompts = buildImagePrompts({ title, description, instructions });
 
     const recipe = new Recipe({
       title,
@@ -50,17 +57,49 @@ router.post('/', async (req, res) => {
 
     const savedRecipe = await recipe.save();
     
-    const images = await generateRecipeImages(savedRecipe);
-    
-    res.json({
-      recipe: savedRecipe,
-      images
+    res.writeHead(200, {
+      'Content-Type': 'text/event-stream',
+      'Cache-Control': 'no-cache',
+      'Connection': 'keep-alive'
     });
+
+    res.write(`data: ${JSON.stringify({ type: 'recipe', data: savedRecipe })}\n\n`);
+
+    try {
+      const { heroPrompt, stepPrompts } = {
+        heroPrompt: imagePrompts[0],
+        stepPrompts: imagePrompts.slice(1)
+      };
+      const heroImage = await generateImage(heroPrompt);
+      res.write(`data: ${JSON.stringify({ type: 'hero', data: heroImage })}\n\n`);
+
+      for (let i = 0; i < stepPrompts.length; i++) {
+        const stepImage = await generateImage(stepPrompts[i]);
+        res.write(`data: ${JSON.stringify({ type: 'step', index: i, data: stepImage })}\n\n`);
+      }
+
+      res.write(`data: ${JSON.stringify({ type: 'complete' })}\n\n`);
+    } catch (imageError) {
+      console.error('Image generation failed:', imageError.message);
+      res.write(`data: ${JSON.stringify({ type: 'error', error: imageError.message })}\n\n`);
+    }
+
+    res.end();
   } catch (error) {
-    console.error('Error generating recipe:', error);
-    res.status(500).json({ error: error.message });
+    console.error('Full error details:', {
+      message: error.message,
+      stack: error.stack,
+      name: error.name
+    });
+    res.write(`data: ${JSON.stringify({ type: 'error', error: error.message })}\n\n`);
+    res.end();
   }
 });
+
+async function generateImage(prompt) {
+  const { generateImage: cloudflareGenerateImage } = await import('../services/cloudflareService.js');
+  return cloudflareGenerateImage(prompt);
+}
 
 router.get('/', async (req, res) => {
   try {
@@ -105,11 +144,41 @@ router.post('/:id/regenerate-images', async (req, res) => {
       return res.status(404).json({ error: 'Recipe not found' });
     }
 
-    const images = await generateRecipeImages(recipe);
-    res.json({ images });
+    res.writeHead(200, {
+      'Content-Type': 'text/event-stream',
+      'Cache-Control': 'no-cache',
+      'Connection': 'keep-alive'
+    });
+
+    try {
+      const imagePrompts = buildImagePrompts({
+        title: recipe.title,
+        description: recipe.description,
+        instructions: recipe.instructions
+      });
+      const { heroPrompt, stepPrompts } = {
+        heroPrompt: imagePrompts[0],
+        stepPrompts: imagePrompts.slice(1)
+      };
+      const heroImage = await generateImage(heroPrompt);
+      res.write(`data: ${JSON.stringify({ type: 'hero', data: heroImage })}\n\n`);
+
+      for (let i = 0; i < stepPrompts.length; i++) {
+        const stepImage = await generateImage(stepPrompts[i]);
+        res.write(`data: ${JSON.stringify({ type: 'step', index: i, data: stepImage })}\n\n`);
+      }
+
+      res.write(`data: ${JSON.stringify({ type: 'complete' })}\n\n`);
+    } catch (imageError) {
+      console.error('Image regeneration failed:', imageError.message);
+      res.write(`data: ${JSON.stringify({ type: 'error', error: imageError.message })}\n\n`);
+    }
+
+    res.end();
   } catch (error) {
     console.error('Error regenerating images:', error);
-    res.status(500).json({ error: error.message });
+    res.write(`data: ${JSON.stringify({ type: 'error', error: error.message })}\n\n`);
+    res.end();
   }
 });
 
