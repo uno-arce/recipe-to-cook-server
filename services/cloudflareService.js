@@ -1,4 +1,7 @@
 import axios from 'axios';
+import dotenv from 'dotenv';
+
+dotenv.config();
 
 const CLOUDFLARE_IMAGE_URL = process.env.CLOUDFLARE_IMAGE_URL;
 const CLOUDFLARE_API_KEY = process.env.CLOUDFLARE_API_KEY;
@@ -9,6 +12,9 @@ export async function generateImage(prompt) {
   }
 
   try {
+    console.log('Generating image for prompt:', prompt.substring(0, 50) + '...');
+    console.log('Cloudflare URL:', CLOUDFLARE_IMAGE_URL);
+    
     const response = await axios.post(
       CLOUDFLARE_IMAGE_URL,
       { prompt },
@@ -22,13 +28,20 @@ export async function generateImage(prompt) {
       }
     );
 
+    console.log('Image generated successfully, size:', response.data.length);
+    
     const base64Image = Buffer.from(response.data, 'binary').toString('base64');
     const mimeType = response.headers['content-type'] || 'image/jpeg';
     const dataUrl = `data:${mimeType};base64,${base64Image}`;
 
     return dataUrl;
   } catch (error) {
-    console.error('Cloudflare AI error:', error.message);
+    console.error('Cloudflare AI error details:', {
+      message: error.message,
+      code: error.code,
+      status: error.response?.status,
+      statusText: error.response?.statusText
+    });
     throw new Error(`Failed to generate image: ${error.message}`);
   }
 }

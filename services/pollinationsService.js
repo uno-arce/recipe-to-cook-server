@@ -3,13 +3,34 @@ import axios from 'axios';
 const POLLINATIONS_API_URL = process.env.POLLINATIONS_API_URL || 'https://text.pollinations.ai/';
 
 export async function generateRecipe(prompt) {
-  const systemPrompt = `You are a recipe generator. Generate a detailed recipe in JSON format only. 
-Do not include any additional text or markdown. The JSON should have this exact structure:
+  const systemPrompt = `You are a recipe generator. Generate a detailed recipe in JSON format only.
+
+CRITICAL REQUIREMENTS:
+- EVERY ingredient MUST have ALL of these fields: name, amount, unit, and description
+- EVERY instruction MUST have ALL of these fields: step, title, and text
+- Do not leave any field empty, null, or undefined
+- If an ingredient amount is "to taste", use "to taste" as both amount and unit
+- Ingredient descriptions MUST start with amount and unit, then brief action: e.g., "300g high-starch Italian rice for that signature creaminess"
+
+Output JSON only - no markdown, no explanatory text. Structure:
 {
   "title": "Recipe name",
   "description": "Brief description of the dish",
-  "ingredients": [{"name": "ingredient name", "amount": "amount", "unit": "unit"}],
-  "instructions": [{"step": 1, "text": "instruction text"}],
+  "ingredients": [
+    {
+      "name": "ingredient name",
+      "amount": "numeric amount or 'to taste'",
+      "unit": "g, ml, tbsp, tsp, cups, sprigs, cloves, whole, etc.",
+      "description": "Short description explaining why this ingredient matters (e.g., '300g high-starch Italian rice for that signature creaminess')"
+    }
+  ],
+  "instructions": [
+    {
+      "step": 1,
+      "title": "Action-focused title (e.g., 'Toast the Rice')",
+      "text": "Detailed instruction text"
+    }
+  ],
   "cookingTime": 30,
   "servings": 4,
   "difficulty": "Easy",
