@@ -27,7 +27,8 @@ const recipeSchema = new mongoose.Schema({
     imageModel: { type: String, default: 'cloudflare-stable-diffusion' },
     generationPrompt: { type: String }
   },
-  imagePrompts: { type: [String], default: [] }
+  imagePrompts: { type: [String], default: [] },
+  heroImage: { type: String, default: null }
 }, { timestamps: true });
 
 export default mongoose.model('Recipe', recipeSchema);
