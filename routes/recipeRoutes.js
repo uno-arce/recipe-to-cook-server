@@ -31,10 +31,18 @@ router.post('/', async (req, res) => {
       return res.status(500).json({ error: 'Failed to generate recipe' });
     }
 
+    if (!recipeData.title) {
+      throw new Error('API response missing required field: title');
+    }
+
+    if (!recipeData.description) {
+      throw new Error('API response missing required field: description');
+    }
+
     const instructions = recipeData.instructions || [];
     const ingredients = recipeData.ingredients || [];
-    const title = recipeData.title || 'Untitled Recipe';
-    const description = recipeData.description || '';
+    const title = recipeData.title;
+    const description = recipeData.description;
 
     const imagePrompts = buildImagePrompts({ title, description, instructions });
 
@@ -71,6 +79,9 @@ router.post('/', async (req, res) => {
         stepPrompts: imagePrompts.slice(1)
       };
       const heroImage = await generateImage(heroPrompt);
+      
+      await Recipe.findByIdAndUpdate(savedRecipe._id, { heroImage });
+      
       res.write(`data: ${JSON.stringify({ type: 'hero', data: heroImage })}\n\n`);
 
       for (let i = 0; i < stepPrompts.length; i++) {
@@ -161,6 +172,9 @@ router.post('/:id/regenerate-images', async (req, res) => {
         stepPrompts: imagePrompts.slice(1)
       };
       const heroImage = await generateImage(heroPrompt);
+      
+      await Recipe.findByIdAndUpdate(recipe._id, { heroImage });
+      
       res.write(`data: ${JSON.stringify({ type: 'hero', data: heroImage })}\n\n`);
 
       for (let i = 0; i < stepPrompts.length; i++) {
