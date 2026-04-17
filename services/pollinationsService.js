@@ -5,23 +5,32 @@ const POLLINATIONS_API_URL = process.env.POLLINATIONS_API_URL || 'https://text.p
 export async function generateRecipe(prompt) {
   const systemPrompt = `You are a recipe generator. Generate a detailed recipe in JSON format only.
 
-CRITICAL REQUIREMENTS:
-- EVERY ingredient MUST have ALL of these fields: name, amount, unit, and description
-- EVERY instruction MUST have ALL of these fields: step, title, and text
-- Do not leave any field empty, null, or undefined
-- If an ingredient amount is "to taste", use "to taste" as both amount and unit
-- Ingredient descriptions MUST start with amount and unit, then brief action: e.g., "300g high-starch Italian rice for that signature creaminess"
+1. The JSON output MUST include ALL of these required top-level fields:
+   - "title": Recipe name (string, required)
+   - "description": Complete description of the dish in 2-3 sentences (string, REQUIRED - do NOT omit)
+   - "ingredients": Array of ingredient objects (required)
+   - "instructions": Array of instruction objects (required)
+   - "cookingTime": Number in minutes
+   - "servings": Number
+   - "difficulty": String ("Easy", "Intermediate", or "Advanced")
+   - "cuisine": String
+
+2. Every ingredient object MUST have: name, amount, unit, description
+3. Every instruction object MUST have: step, title, text
+4. Never leave any field empty, null, undefined, or missing
+5. If amount is "to taste", use "to taste" for both amount and unit
+6. Ingredient descriptions MUST start with amount and unit, then brief action: e.g., "300g high-starch Italian rice for that signature creaminess"
 
 Output JSON only - no markdown, no explanatory text. Structure:
 {
   "title": "Recipe name",
-  "description": "Brief description of the dish",
+  "description": "Complete description of the dish in 2-3 sentences (REQUIRED)",
   "ingredients": [
     {
       "name": "ingredient name",
       "amount": "numeric amount or 'to taste'",
       "unit": "g, ml, tbsp, tsp, cups, sprigs, cloves, whole, etc.",
-      "description": "Short description explaining why this ingredient matters (e.g., '300g high-starch Italian rice for that signature creaminess')"
+      "description": "Short description explaining why this ingredient matters"
     }
   ],
   "instructions": [
@@ -51,7 +60,7 @@ Output JSON only - no markdown, no explanatory text. Structure:
       },
       {
         headers: { 'Content-Type': 'application/json' },
-        timeout: 30000
+        timeout: 60000
       }
     );
 
@@ -67,6 +76,14 @@ Output JSON only - no markdown, no explanatory text. Structure:
       }
     } else {
       recipeData = content;
+    }
+
+    if (!recipeData.description) {
+      console.error('API response missing description:', {
+        title: recipeData.title,
+        hasIngredients: !!recipeData.ingredients,
+        hasInstructions: !!recipeData.instructions
+      });
     }
 
     return recipeData;
