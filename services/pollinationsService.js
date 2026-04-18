@@ -2,48 +2,42 @@ import axios from 'axios';
 
 const POLLINATIONS_API_URL = process.env.POLLINATIONS_API_URL || 'https://text.pollinations.ai/';
 
-export async function generateRecipe(prompt) {
+const MAX_RETRIES = 3;
+const RETRY_DELAYS = [1000, 2000, 4000];
+
+async function generateRecipeInternal(prompt) {
   const systemPrompt = `You are a recipe generator. Generate a detailed recipe in JSON format only.
 
-1. The JSON output MUST include ALL of these required top-level fields:
-   - "title": Recipe name (string, required)
-   - "description": Complete description of the dish in 2-3 sentences (string, REQUIRED - do NOT omit)
-   - "ingredients": Array of ingredient objects (required)
-   - "instructions": Array of instruction objects (required)
-   - "cookingTime": Number in minutes
-   - "servings": Number
-   - "difficulty": String ("Easy", "Intermediate", or "Advanced")
-   - "cuisine": String
+CRITICAL - The most important requirements:
+1. "title" field is MANDATORY - MUST be a recipe name (e.g., "Creamy Mushroom Risotto")
+2. "description" field is MANDATORY - 2-3 sentences describing the dish, its flavors, and appeal. This is THE MOST IMPORTANT field - the entire recipe structure depends on it.
+3. NEVER omit "description" - if you cannot create a description, DO NOT respond with partial JSON
 
-2. Every ingredient object MUST have: name, amount, unit, description
-3. Every instruction object MUST have: step, title, text
-4. Never leave any field empty, null, undefined, or missing
-5. If amount is "to taste", use "to taste" for both amount and unit
-6. Ingredient descriptions MUST start with amount and unit, then brief action: e.g., "300g high-starch Italian rice for that signature creaminess"
+All required fields (ALL MUST BE PRESENT):
+- "title": Recipe name (mandatory)
+- "description": 2-3 sentence description of the dish (MANDATORY - most critical field)
+- "ingredients": Array with name, amount, unit, description for each
+- "instructions": Array with step number, title, and text for each
+- "cookingTime": Number (minutes)
+- "servings": Number
+- "difficulty": "Easy", "Intermediate", or "Advanced"
+- "cuisine": Cuisine type
 
-Output JSON only - no markdown, no explanatory text. Structure:
+Rules:
+- NEVER use null, undefined, or empty strings for any required field
+- If amount is "to taste", use "to taste" for both amount and unit
+- Ingredient descriptions: include amount, unit, and brief why it matters
+
+Output only valid JSON - no markdown, no explanatory text.
 {
   "title": "Recipe name",
-  "description": "Complete description of the dish in 2-3 sentences (REQUIRED)",
-  "ingredients": [
-    {
-      "name": "ingredient name",
-      "amount": "numeric amount or 'to taste'",
-      "unit": "g, ml, tbsp, tsp, cups, sprigs, cloves, whole, etc.",
-      "description": "Short description explaining why this ingredient matters"
-    }
-  ],
-  "instructions": [
-    {
-      "step": 1,
-      "title": "Action-focused title (e.g., 'Toast the Rice')",
-      "text": "Detailed instruction text"
-    }
-  ],
+  "description": "A complete 2-3 sentence description of the dish - its flavors, textures, and what makes it special (REQUIRED)",
+  "ingredients": [...],
+  "instructions": [...],
   "cookingTime": 30,
   "servings": 4,
   "difficulty": "Easy",
-  "cuisine": "Cuisine type"
+  "cuisine": "Italian"
 }`;
 
   try {
@@ -91,4 +85,27 @@ Output JSON only - no markdown, no explanatory text. Structure:
     console.error('Pollinations API error:', error.message);
     throw new Error(`Failed to generate recipe: ${error.message}`);
   }
+}
+
+export async function generateRecipe(prompt) {
+  let attempt = 0;
+  
+  while (attempt < MAX_RETRIES) {
+    try {
+      return await generateRecipeInternal(prompt);
+    } catch (error) {
+      const status = error.response?.status;
+      const isRetryable = status === 502 || status === 503 || status === 504 || error.code === 'ECONNRESET';
+      
+      if (isRetryable && attempt < MAX_RETRIES - 1) {
+        console.log(`Pollinations API error ${status || error.code}, retrying in ${RETRY_DELAYS[attempt]}ms... (attempt ${attempt + 1}/${MAX_RETRIES})`);
+        await new Promise(resolve => setTimeout(resolve, RETRY_DELAYS[attempt]));
+        attempt++;
+      } else {
+        throw error;
+      }
+    }
+  }
+  
+  throw new Error('Failed to generate recipe after retries');
 }
